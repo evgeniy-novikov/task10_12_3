@@ -5,10 +5,13 @@ cd $dir
 source "$dir/config"
 MAC=52:54:00:`(date; cat /proc/interrupts) | md5sum | sed -r 's/^(.{6}).*$/\1/; s/([0-9a-f]{2})/\1:/g; s/:$//;'`
 mkdir -p $dir/networks
+mkdir -p $dir/docker/etc
+mkdir -p $dir/docker/certs
 mkdir -p $dir/config-drives/$VM1_NAME-config
 mkdir -p $dir/config-drives/$VM2_NAME-config
 mkdir -p $(dirname "$VM1_HDD")
 mkdir -p $(dirname "$VM2_HDD")
+
 
 ############################ NETWORKS ################################
 #External
@@ -61,8 +64,8 @@ IMG_DESTINATION="/var/lib/libvirt/images/ubunut-server-16.04.qcow2"
 #IMG_SOURCE_URL="https://cloud-images.ubuntu.com/xenial/current/xenial-server-cloudimg-amd64-disk1.img"
 wget -O "$IMG_DESTINATION" "$VM_BASE_IMAGE"
 
-################ Claud init ###############
-################ VM1 Files ################
+################### CERTS ####################
+
 echo "
 [ req ]
 default_bits                = 4096
@@ -90,7 +93,20 @@ subjectAltName              = @alt_names
 
 [alt_names]
 IP.1  = $VM1_EXTERNAL_IP
-DNS.1 = $VM1_NAME" > config-drives/$VM1_NAME-config/openssl-san.cnf
+DNS.1 = $VM1_NAME" > /usr/lib/ssl/openssl-san.cnf
+
+
+openssl genrsa -out $dir/docker/certs/root-ca.key 4096
+openssl req -x509 -new -key $dir/docker/certs/root-ca.key -days 365 -out $dir/docker/certs/root-ca.crt -subj "/C=UA/L=Kharkov/O=HOME/OU=IT/CN=$VM1_NAME"
+openssl genrsa -out $dir/docker/certs/web.key 4096
+openssl req -new -key $dir/docker/certs/web.key -out $dir/docker/certs/web.csr -config /usr/lib/ssl/openssl-san.cnf -subj "/C=UA/L=Kharkov/O=HOME/OU=IT/CN=$VM1_NAME"
+openssl x509 -req -in $dir/docker/certs/web.csr -CA $dir/docker/certs/root-ca.crt  -CAkey $dir/docker/certs/root-ca.key -CAcreateserial -out $dir/docker/certs/web.crt -days 365 -extensions v3_req -extfile /usr/lib/ssl/openssl-san.cnf
+cat $dir/docker/certs/root-ca.crt >> $dir/docker/certs/web.crt
+
+
+
+
+################################# NGINX ###########################################
 
 echo "
 server {
@@ -105,7 +121,17 @@ ssl_certificate_key /etc/ssl/certs/web.key;
             proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto \$scheme;
     }
-} " >> config-drives/$VM1_NAME-config/nginx.conf
+} " >> $dir/docker/etc/nginx.conf
+
+
+################ Claud init ###############
+
+
+################ VM1 Files ################
+
+cp $dir/docker/etc/nginx.conf $dir/config-drives/$VM1_NAME-config/nginx.conf
+cp $dir/docker/certs/web.crt $dir/config-drives/$VM1_NAME-config/web.crt
+cp $dir/docker/certs/web.key $dir/config-drives/$VM1_NAME-config/web.key
 
 ################# YML CONFIG ##################################
 
@@ -159,13 +185,8 @@ runcmd:
   - mount -t iso9660 -o ro /dev/sr0 /mnt
   - mkdir -p /opt/etc/nginx
   - mkdir -p /opt/etc/docker
-  - cp /mnt/openssl-san.cnf /usr/lib/ssl/openssl-san.cnf
-  - openssl genrsa -out /etc/ssl/certs/root-ca.key 4096
-  - openssl req -x509 -new -key /etc/ssl/certs/root-ca.key -days 365 -out /etc/ssl/certs/root-ca.crt -subj "/C=UA/L=Kharkov/O=HOME/OU=IT/CN=$VM1_NAME"
-  - openssl genrsa -out /etc/ssl/certs/web.key 4096
-  - openssl req -new -key /etc/ssl/certs/web.key -out /etc/ssl/certs/web.csr -config /usr/lib/ssl/openssl-san.cnf -subj "/C=UA/L=Kharkov/O=HOME/OU=IT/CN=$VM1_NAME"
-  - openssl x509 -req -in /etc/ssl/certs/web.csr -CA /etc/ssl/certs/root-ca.crt  -CAkey /etc/ssl/certs/root-ca.key -CAcreateserial -out /etc/ssl/certs/web.crt -days 365 -extensions v3_req -extfile /usr/lib/ssl/openssl-san.cnf
-  - cat /etc/ssl/certs/root-ca.crt >> /etc/ssl/certs/web.crt
+  - cp /mnt/web.crt /etc/ssl/certs/web.crt
+  - cp /mnt/web.key /etc/ssl/certs/web.key
   - cp /mnt/nginx.conf /opt/etc/nginx/nginx.conf
   - cp /mnt/docker-compose.yml /opt/etc/docker/docker-compose.yml
   - cd /opt/etc/docker
