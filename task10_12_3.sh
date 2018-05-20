@@ -293,8 +293,8 @@ echo "<domain type='kvm'>
       <source network='$INTERNAL_NET_NAME'/>
       <model type='virtio'/>
       <protocol family='ipv4'>
-      <ip address='192.168.124.101' prefix='24'/>
-      <route gateway='192.168.124.1'/>
+      <ip address='$VM1_INTERNAL_IP' prefix='24'/>
+      <route gateway='$INTERNAL_NET.1'/>
       </protocol>
     </interface>
     <interface type='network'>
@@ -344,8 +344,8 @@ echo "<domain type='kvm'>
       <source network='$INTERNAL_NET_NAME'/>
       <model type='virtio'/>
         <protocol family='ipv4'>
-        <ip address='192.168.124.102' prefix='24'/>
-        <route gateway='192.168.124.1'/>
+        <ip address='$VM2_INTERNAL_IP' prefix='24'/>
+        <route gateway='$INTERNAL_NET.1'/>
         </protocol>
     </interface>
     <interface type='network'>
@@ -379,6 +379,3 @@ cp $IMG_DESTINATION $VM2_HDD
 
 virsh define vm2.xml
 virsh start vm2
-
-
-
